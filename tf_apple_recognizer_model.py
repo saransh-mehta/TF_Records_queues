@@ -7,9 +7,10 @@ import numpy as np
 import os
 
 from tf_apple_recognizer_raw_pre import extract_from_TFRecords_in_tensor_format
+from tf_apple_recognizer_model_ import create_model
 
 TF_RECORD_TRAIN_PATH = os.path.abspath('train_apple_recognizer.tfrecords')
-TF_RECORD_TEST_PATH = os.path.abspath('test_apple_recognizer.tfrecords')
+TF_RECORD_VAL_PATH = os.path.abspath('validation_apple_recognizer.tfrecords')
 LOG_DIR = os.path.join(os.getcwd(), 'tmp')
 
 THREADS_NUM = 1
@@ -18,10 +19,24 @@ BATCH_SIZE = 3
 DROP_OUT = 0.5
 EPOCHS = 1000
 
+ACTIVATION = 'custom'
+
 filenameQueue = tf.train.string_input_producer(
-    [TF_RECORD_TRAIN_PATH], num_epochs=20) #num_epoch times file will be read
+    [TF_RECORD_TRAIN_PATH], num_epochs = 20) #num_epoch times file will be read
+
+filenameQueueVal = tf.train.string_input_producer(
+    [TF_RECORD_VAL_PATH], num_epochs = 20) #num_epoch times file will be read
 
 images, labels = extract_from_TFRecords_in_tensor_format(filenameQueue, BATCH_SIZE)
+
+imagesVal, labelsVal = extract_from_TFRecords_in_tensor_format(filenameQueueVal, BATCH_SIZE)
+
+
+if ACTIVATION == 'custom':
+	activation = lambda x: tf.abs(x)
+else:
+	activation = tf.nn.relu
+
 
 with tf.name_scope('input') as scope:
 
@@ -50,31 +65,31 @@ with tf.name_scope('cnn') as scope:
 		filters = tf.Variable(tf.truncated_normal(shape, stddev = 0.1))
 		return filters
 
-	conv1 = tf.nn.relu(tf.nn.conv2d(x, filter = create_filter([3, 3, 3, 32]), strides = [1, 1, 1, 1],
+	conv1 = activation(tf.nn.conv2d(x, filter = create_filter([3, 3, 3, 32]), strides = [1, 1, 1, 1],
 	 padding = 'SAME', name = 'conv1'))
 	# here we have defined our first layer with a convolution window of 3x3 and 32 feature maps
 	# the 3 in between shows that initially we are having only 3 feature map (tht is the 3 channel of image)
 
-	conv2 = tf.nn.relu(tf.nn.conv2d(conv1, filter = create_filter([3, 3, 32, 32]), strides = [1, 1, 1, 1],
+	conv2 = activation(tf.nn.conv2d(conv1, filter = create_filter([3, 3, 32, 32]), strides = [1, 1, 1, 1],
 	 padding = 'SAME', name = 'conv2'))
 
 	maxPool1 = tf.nn.max_pool(conv2, ksize = [1, 2, 2, 1], strides = [1, 2, 2, 1], padding = 'SAME',
 		name = 'maxPool1')
 	print(tf.shape(maxPool1))
 	# after this the image size will be reduced to 125x125x32
-	conv3 = tf.nn.relu(tf.nn.conv2d(maxPool1, filter = create_filter([3, 3, 32, 64]), strides = [1, 1, 1, 1],
+	conv3 = activation(tf.nn.conv2d(maxPool1, filter = create_filter([3, 3, 32, 64]), strides = [1, 1, 1, 1],
 	 padding = 'SAME', name = 'conv3'))
 
-	conv4 = tf.nn.relu(tf.nn.conv2d(conv3, filter = create_filter([3, 3, 64, 64]), strides = [1, 1, 1, 1],
+	conv4 = activation(tf.nn.conv2d(conv3, filter = create_filter([3, 3, 64, 64]), strides = [1, 1, 1, 1],
 	 padding = 'SAME', name = 'conv4'))
 
 	maxPool2 = tf.nn.max_pool(conv4, ksize = [1, 2, 2, 1], strides = [1, 2, 2, 1], padding = 'SAME',
 		name = 'maxPool2')
 	# now the image size has reduced to 63x63x64 after this maxpooling
-	conv5 = tf.nn.relu(tf.nn.conv2d(maxPool2, filter = create_filter([3, 3, 64, 128]), strides = [1, 1, 1, 1],
+	conv5 = activation(tf.nn.conv2d(maxPool2, filter = create_filter([3, 3, 64, 128]), strides = [1, 1, 1, 1],
 	 padding = 'SAME', name = 'conv5'))
 
-	conv6 = tf.nn.relu(tf.nn.conv2d(conv5, filter = create_filter([3, 3, 128, 128]), strides = [1, 1, 1, 1],
+	conv6 = activation(tf.nn.conv2d(conv5, filter = create_filter([3, 3, 128, 128]), strides = [1, 1, 1, 1],
 	 padding = 'SAME', name = 'conv6'))
 
 	maxPool3 = tf.nn.max_pool(conv6, ksize = [1, 2, 2, 1], strides = [1, 2, 2, 1], padding = 'SAME',
@@ -89,30 +104,32 @@ with tf.name_scope('cnn') as scope:
 	# we can connect it to dense layers
 with tf.name_scope('dense') as scope:
 
-	dense1 = tf.nn.relu(tf.layers.dense(flatten, units = 1024, name = 'dense1'))
+	dense1 = activation(tf.layers.dense(flatten, units = 1024, name = 'dense1'))
 	# thus here the neuron count in our model is 1024*6*6*128
 	keep_prob = tf.placeholder(tf.float32)
 	# the dropout ratio has to be a placeholder which will be fed value at training like x
 	dropOut1 = tf.nn.dropout(dense1, keep_prob = keep_prob, name = 'drop1')
 	# probability that an element is kept is keep_prob
-	dense2 = tf.nn.relu(tf.layers.dense(dropOut1, units = 512, name = 'dense2'))
+	dense2 = activation(tf.layers.dense(dropOut1, units = 512, name = 'dense2'))
 	dropOut2 = tf.nn.dropout(dense2, keep_prob = keep_prob, name = 'drop2')
 
 with tf.name_scope('out_layer') as scope:
+
 	finalOutput = tf.nn.softmax(tf.layers.dense(dropOut2, units = NUM_CLASSES, name = 'output'))
 	# here in the final layer we have choosen softmax as activation because we need classification and
 	# softmax helps in rounding up the probability into a certain class
+
+
 with tf.name_scope('train') as scope:
+
 	loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits = finalOutput, labels = y))
 	optimizer = tf.train.AdamOptimizer()
 	train = optimizer.minimize(loss)
 
 with tf.name_scope('accuracy') as accuracy:
+
 	correctPrediction = tf.equal(tf.argmax(finalOutput, axis = 1), tf.argmax(y, axis = 1))
 	accuracy = tf.reduce_mean(tf.cast(correctPrediction, tf.float32)) * 100
-
-
-
 
 
 initGlobal = tf.global_variables_initializer()
