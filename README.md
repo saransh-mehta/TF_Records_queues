@@ -18,6 +18,8 @@ which are considered into non-apple class. 10 images from both apple, non-apple 
 The performance of model is expected to be not so good due to the irregularities in the data of non-apple class.
 Below is the drive link for the created dataset.
 
+https://drive.google.com/open?id=1I3_Gt-Wwv25wNsAPW27QZb3hwl1R1Yf5
+
 # Renaming and format
 
 The function rename_and_format() uses Opencv module to red images and save them in '.jpg' format with a serial number in their name.
